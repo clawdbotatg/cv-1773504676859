@@ -4,6 +4,178 @@
  */
 import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 
-const deployedContracts = {} as const;
+const deployedContracts = {
+  8453: {
+    LegacyFeeBurner: {
+      address: "0x0000000000000000000000000000000000000000",
+      deployedOnBlock: 0,
+      abi: [
+        {
+          type: "constructor",
+          inputs: [
+            { name: "_owner", type: "address", internalType: "address" },
+            { name: "_operator", type: "address", internalType: "address" },
+            { name: "_burnEngine", type: "address", internalType: "address" },
+            { name: "_token", type: "address", internalType: "address" },
+            { name: "_safe", type: "address", internalType: "address" },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "acceptOwnership",
+          inputs: [],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "burnEngine",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "claimLegacyAndBurn",
+          inputs: [],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "clankerFactory",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "operator",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "owner",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "pendingOwner",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "recoverCreator",
+          inputs: [],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "safe",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "setOperator",
+          inputs: [{ name: "newOperator", type: "address", internalType: "address" }],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "token",
+          inputs: [],
+          outputs: [{ name: "", type: "address", internalType: "address" }],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "transferCreator",
+          inputs: [{ name: "newCreator", type: "address", internalType: "address" }],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "transferOwnership",
+          inputs: [{ name: "newOwner", type: "address", internalType: "address" }],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "event",
+          name: "CreatorRecovered",
+          inputs: [
+            { name: "token", type: "address", indexed: true, internalType: "address" },
+            { name: "owner", type: "address", indexed: true, internalType: "address" },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "CreatorTransferred",
+          inputs: [
+            { name: "token", type: "address", indexed: true, internalType: "address" },
+            { name: "newCreator", type: "address", indexed: true, internalType: "address" },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "LegacyFeesClaimed",
+          inputs: [
+            { name: "caller", type: "address", indexed: true, internalType: "address" },
+            { name: "token", type: "address", indexed: true, internalType: "address" },
+            { name: "burnEngine", type: "address", indexed: true, internalType: "address" },
+            { name: "timestamp", type: "uint256", indexed: false, internalType: "uint256" },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OperatorUpdated",
+          inputs: [
+            { name: "previousOperator", type: "address", indexed: true, internalType: "address" },
+            { name: "newOperator", type: "address", indexed: true, internalType: "address" },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OwnershipTransferStarted",
+          inputs: [
+            { name: "previousOwner", type: "address", indexed: true, internalType: "address" },
+            { name: "newOwner", type: "address", indexed: true, internalType: "address" },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OwnershipTransferred",
+          inputs: [
+            { name: "previousOwner", type: "address", indexed: true, internalType: "address" },
+            { name: "newOwner", type: "address", indexed: true, internalType: "address" },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "error",
+          name: "ReentrancyGuardReentrantCall",
+          inputs: [],
+        },
+      ],
+    },
+  },
+} as const;
 
 export default deployedContracts satisfies GenericContractsDeclaration;

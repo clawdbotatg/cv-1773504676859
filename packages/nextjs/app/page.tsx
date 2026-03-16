@@ -1,85 +1,301 @@
-
 "use client";
 
-import { useAccount } from "wagmi";
-import { Address } from "@scaffold-ui/components";
-import type { NextPage } from "next";
-import { hardhat } from "viem/chains";
-import Link from "next/link";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { useTargetNetwork } from "~~/hooks/scaffold-eth";
+import { useState } from "react";
+import { base } from "viem/chains";
+import { useAccount, useSwitchChain } from "wagmi";
+import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
+import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { notification } from "~~/utils/scaffold-eth";
 
+const OWNER_FALLBACK = "0xa2aD5F70B2EaccA81910561B3c1c7FfEC2B2C2B3";
+const OPERATOR_FALLBACK = "0xeB99a27AD482534FBf40213d6714e130A43Db0d8";
 
-const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
-  const { targetNetwork } = useTargetNetwork();
+function shortenAddress(addr: string) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function translateError(e: any): string {
+  const msg = e?.message || e?.shortMessage || "Transaction failed";
+  if (msg.includes("User rejected") || msg.includes("user rejected")) return "Transaction cancelled";
+  if (msg.includes("Not authorized")) return "Connected wallet is not authorized for this action";
+  if (msg.includes("Not owner")) return "Only the owner wallet can perform this action";
+  if (msg.includes("Not pending owner")) return "Only the pending owner can accept ownership";
+  return msg.length > 200 ? msg.slice(0, 200) + "…" : msg;
+}
+
+export default function Home() {
+  const { address, chain } = useAccount();
+  const { switchChain } = useSwitchChain();
+
+  // Read live owner/operator from contract
+  const { data: liveOwner } = useScaffoldReadContract({ contractName: "LegacyFeeBurner", functionName: "owner" });
+  const { data: liveOperator } = useScaffoldReadContract({ contractName: "LegacyFeeBurner", functionName: "operator" });
+  const { data: liveToken } = useScaffoldReadContract({ contractName: "LegacyFeeBurner", functionName: "token" });
+  const { data: liveSafe } = useScaffoldReadContract({ contractName: "LegacyFeeBurner", functionName: "safe" });
+  const { data: liveBurnEngine } = useScaffoldReadContract({
+    contractName: "LegacyFeeBurner",
+    functionName: "burnEngine",
+  });
+
+  const currentOwner = (liveOwner as string) || OWNER_FALLBACK;
+  const currentOperator = (liveOperator as string) || OPERATOR_FALLBACK;
+
+  const isOwner = address?.toLowerCase() === currentOwner.toLowerCase();
+  const isOperator = address?.toLowerCase() === currentOperator.toLowerCase();
+  const isOnBase = chain?.id === base.id;
+
+  // Separate write hooks
+  const { writeContractAsync: claimAndBurn } = useScaffoldWriteContract("LegacyFeeBurner");
+  const { writeContractAsync: recoverCreatorWrite } = useScaffoldWriteContract("LegacyFeeBurner");
+  const { writeContractAsync: transferCreatorWrite } = useScaffoldWriteContract("LegacyFeeBurner");
+  const { writeContractAsync: setOperatorWrite } = useScaffoldWriteContract("LegacyFeeBurner");
+  const { writeContractAsync: transferOwnershipWrite } = useScaffoldWriteContract("LegacyFeeBurner");
+  const { writeContractAsync: acceptOwnershipWrite } = useScaffoldWriteContract("LegacyFeeBurner");
+
+  // Separate loading states
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [isTransferringCreator, setIsTransferringCreator] = useState(false);
+  const [isSettingOperator, setIsSettingOperator] = useState(false);
+  const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
+  const [isAcceptingOwnership, setIsAcceptingOwnership] = useState(false);
+
+  // Input states
+  const [newCreatorAddr, setNewCreatorAddr] = useState("");
+  const [newOperatorAddr, setNewOperatorAddr] = useState("");
+  const [newOwnerAddr, setNewOwnerAddr] = useState("");
+
+  const handleClaim = async () => {
+    setIsClaiming(true);
+    try {
+      await claimAndBurn({ functionName: "claimLegacyAndBurn" });
+      notification.success("Legacy fees claimed and burned!");
+    } catch (e: any) {
+      notification.error(translateError(e));
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  const handleRecover = async () => {
+    setIsRecovering(true);
+    try {
+      await recoverCreatorWrite({ functionName: "recoverCreator" });
+      notification.success("Creator recovered to owner!");
+    } catch (e: any) {
+      notification.error(translateError(e));
+    } finally {
+      setIsRecovering(false);
+    }
+  };
+
+  const handleTransferCreator = async () => {
+    if (!newCreatorAddr) return;
+    setIsTransferringCreator(true);
+    try {
+      await transferCreatorWrite({ functionName: "transferCreator", args: [newCreatorAddr as `0x${string}`] });
+      notification.success("Creator transferred!");
+      setNewCreatorAddr("");
+    } catch (e: any) {
+      notification.error(translateError(e));
+    } finally {
+      setIsTransferringCreator(false);
+    }
+  };
+
+  const handleSetOperator = async () => {
+    if (!newOperatorAddr) return;
+    setIsSettingOperator(true);
+    try {
+      await setOperatorWrite({ functionName: "setOperator", args: [newOperatorAddr as `0x${string}`] });
+      notification.success("Operator updated!");
+      setNewOperatorAddr("");
+    } catch (e: any) {
+      notification.error(translateError(e));
+    } finally {
+      setIsSettingOperator(false);
+    }
+  };
+
+  const handleTransferOwnership = async () => {
+    if (!newOwnerAddr) return;
+    setIsTransferringOwnership(true);
+    try {
+      await transferOwnershipWrite({ functionName: "transferOwnership", args: [newOwnerAddr as `0x${string}`] });
+      notification.success("Ownership transfer started! New owner must call Accept.");
+      setNewOwnerAddr("");
+    } catch (e: any) {
+      notification.error(translateError(e));
+    } finally {
+      setIsTransferringOwnership(false);
+    }
+  };
+
+  const handleAcceptOwnership = async () => {
+    setIsAcceptingOwnership(true);
+    try {
+      await acceptOwnershipWrite({ functionName: "acceptOwnership" });
+      notification.success("Ownership accepted!");
+    } catch (e: any) {
+      notification.error(translateError(e));
+    } finally {
+      setIsAcceptingOwnership(false);
+    }
+  };
 
   return (
-    <>
-      <div className="flex items-center flex-col grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-            
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address
-              address={connectedAddress}
-              chain={targetNetwork}
-              blockExplorerAddressLink={
-                targetNetwork.id === hardhat.id ? `/blockexplorer/address/${connectedAddress}` : undefined
-              }
-            />
-          </div>
-          
-<p className="text-center text-lg">
-  Get started by editing{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    packages/nextjs/app/page.tsx
-  </code>
-</p>
-<p className="text-center text-lg">
-  Edit your smart contract{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    YourContract.sol
-  </code>{" "}
-  in{" "}
-  <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-    packages/hardhat/contracts
-  </code>
-</p>
+    <div className="flex flex-col items-center pt-10 px-4">
+      <div className="max-w-xl w-full">
+        <h1 className="text-4xl font-bold text-center">LegacyFeeBurner</h1>
+        <p className="text-center opacity-70 mt-2">Permissionless legacy fee burning for Clanker v3.1 creators</p>
 
-        </div>
-
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
+        {/* Contract Info */}
+        <div className="card bg-base-100 shadow-md mt-6 p-4">
+          <div className="text-sm space-y-1">
+            <div>
+              <span className="font-semibold">Owner:</span>{" "}
+              <span className="font-mono text-xs">{shortenAddress(currentOwner)}</span>
             </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
+            <div>
+              <span className="font-semibold">Operator:</span>{" "}
+              <span className="font-mono text-xs">{shortenAddress(currentOperator)}</span>
             </div>
+            {liveToken && (
+              <div>
+                <span className="font-semibold">Token:</span>{" "}
+                <span className="font-mono text-xs">{shortenAddress(liveToken as string)}</span>
+              </div>
+            )}
+            {liveSafe && (
+              <div>
+                <span className="font-semibold">Safe:</span>{" "}
+                <span className="font-mono text-xs">{shortenAddress(liveSafe as string)}</span>
+              </div>
+            )}
+            {liveBurnEngine && (
+              <div>
+                <span className="font-semibold">BurnEngine:</span>{" "}
+                <span className="font-mono text-xs">{shortenAddress(liveBurnEngine as string)}</span>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Main Action */}
+        <div className="mt-6 flex flex-col items-center gap-4">
+          {!address ? (
+            <RainbowKitCustomConnectButton />
+          ) : !isOnBase ? (
+            <button className="btn btn-warning btn-lg" onClick={() => switchChain({ chainId: base.id })}>
+              Switch to Base
+            </button>
+          ) : (
+            <button
+              className={`btn btn-primary btn-lg w-full ${isClaiming ? "loading" : ""}`}
+              onClick={handleClaim}
+              disabled={isClaiming}
+            >
+              {isClaiming ? "Claiming & Burning…" : "🔥 Claim & Burn All"}
+            </button>
+          )}
+        </div>
+
+        {/* Operator Controls */}
+        {address && isOnBase && (isOperator || isOwner) && (
+          <div className="card bg-base-100 shadow-md mt-6 p-4">
+            <h2 className="font-bold text-lg mb-3">
+              <span className="badge badge-accent mr-2">{isOwner ? "Owner" : "Operator"}</span>
+              Controls
+            </h2>
+            <button
+              className={`btn btn-warning w-full ${isRecovering ? "loading" : ""}`}
+              onClick={handleRecover}
+              disabled={isRecovering}
+            >
+              {isRecovering ? "Recovering…" : "⚠️ Recover Creator to Owner"}
+            </button>
+          </div>
+        )}
+
+        {/* Owner-only Controls */}
+        {address && isOnBase && isOwner && (
+          <div className="card bg-base-100 shadow-md mt-4 p-4 space-y-4">
+            <h2 className="font-bold text-lg">Owner Admin</h2>
+
+            {/* Transfer Creator */}
+            <div>
+              <label className="label text-sm font-semibold">Transfer Creator</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input input-bordered flex-1 font-mono text-xs"
+                  placeholder="0x… new creator address"
+                  value={newCreatorAddr}
+                  onChange={e => setNewCreatorAddr(e.target.value)}
+                />
+                <button
+                  className={`btn btn-error ${isTransferringCreator ? "loading" : ""}`}
+                  onClick={handleTransferCreator}
+                  disabled={isTransferringCreator || !newCreatorAddr}
+                >
+                  Transfer
+                </button>
+              </div>
+            </div>
+
+            {/* Set Operator */}
+            <div>
+              <label className="label text-sm font-semibold">Set Operator</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input input-bordered flex-1 font-mono text-xs"
+                  placeholder="0x… new operator address"
+                  value={newOperatorAddr}
+                  onChange={e => setNewOperatorAddr(e.target.value)}
+                />
+                <button
+                  className={`btn btn-secondary ${isSettingOperator ? "loading" : ""}`}
+                  onClick={handleSetOperator}
+                  disabled={isSettingOperator || !newOperatorAddr}
+                >
+                  Set
+                </button>
+              </div>
+            </div>
+
+            {/* Transfer Ownership */}
+            <div>
+              <label className="label text-sm font-semibold">Transfer Ownership (2-step)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input input-bordered flex-1 font-mono text-xs"
+                  placeholder="0x… new owner address"
+                  value={newOwnerAddr}
+                  onChange={e => setNewOwnerAddr(e.target.value)}
+                />
+                <button
+                  className={`btn btn-error ${isTransferringOwnership ? "loading" : ""}`}
+                  onClick={handleTransferOwnership}
+                  disabled={isTransferringOwnership || !newOwnerAddr}
+                >
+                  Start Transfer
+                </button>
+              </div>
+            </div>
+
+            {/* Accept Ownership */}
+            <button
+              className={`btn btn-outline w-full ${isAcceptingOwnership ? "loading" : ""}`}
+              onClick={handleAcceptOwnership}
+              disabled={isAcceptingOwnership}
+            >
+              {isAcceptingOwnership ? "Accepting…" : "Accept Ownership"}
+            </button>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
-};
-
-export default Home;
+}
