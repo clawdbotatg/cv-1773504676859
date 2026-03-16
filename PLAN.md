@@ -9,35 +9,33 @@
 
 ## Overview
 
-A proxy contract on Base that acts as the registered `creator` for a Clanker v3.1 token (₸USD), enabling a hot wallet to claim legacy fees and send them directly to BurnEngine V2 for burning in a single transaction. Hardware wallet retains full control to recover or transfer creator status. Includes a 7-day dead man's switch that opens up the claim+burn to anyone. Paired with a minimal one-button SE2 frontend on Vercel/BGIPFS.
+A proxy contract on Base that acts as the registered `creator` for a Clanker v3.1 token, enabling anyone to claim legacy fees and send them directly to BurnEngine for burning in a single transaction. Hardware wallet retains full control to recover or transfer creator status.
+
+**Key design change from original plan:** `claimLegacyAndBurn()` is **fully permissionless — callable by anyone at any time**. No dead man's switch, no CLAIM_INTERVAL, no time restriction.
+
+Paired with a minimal one-button SE2 frontend deployed to Vercel/BGIPFS.
 
 ### Context (related jobs)
 - **Job 5 (cv-1773321831954):** TurboUSD AI Federal Meme Reserve Agent — BurnEngine V1 + Telegram bot + dashboard
-- **Job 6 (cv-1773510123450 / burnengine-v2):** BurnEngine V2 — permissionless hyperstructure, deployed to Base at `0xb9Ca0A8c39A06892a205d173F95424D5AccC141f`
-- **Job 7 (this job):** LegacyFeeBurner — proxy that feeds into BurnEngine V2
+- **Job 6 (cv-1773510123450 / burnengine-v2):** BurnEngine V2 — permissionless hyperstructure
+- **Job 7 (this job):** LegacyFeeBurner — proxy that feeds into a BurnEngine
 
 ---
 
-## Known Addresses (all Base mainnet)
+## Deployment Addresses
 
-| Name | Address |
-|------|---------|
-| BurnEngine V2 | `0xb9Ca0A8c39A06892a205d173F95424D5AccC141f` |
-| Clanker Factory (v3.1) | `0x10F4485d6f90239B72c6A5eaD2F2320993D285E4` |
-| Gnosis Safe (fee holder) | `0x1eaf444ebDf6495C57aD52A04C61521bBf564ace` |
-| ₸USD token | `0x3d5e487B21E0569048c4D1A60E98C36e1B09DB07` |
-| Client wallet | `0x9ba58Eea1Ea9ABDEA25BA83603D54F6D9A01E506` |
+All addresses confirmed via job messages. Constructor accepts them as args (immutables set at construction).
 
-## TBDs — Required Before `deploy_contract` Stage
+| Field | Address | Notes |
+|-------|---------|-------|
+| `_owner` | `0xa2aD5F70B2EaccA81910561B3c1c7FfEC2B2C2B3` | Hardware wallet — full control |
+| `_operator` | `0xeB99a27AD482534FBf40213d6714e130A43Db0d8` | Hot wallet — can call recoverCreator() |
+| `_burnEngine` | `0x1f068DB935DD585941eC386eB14ca595F350D63e` | Test BurnEngine |
+| `_token` | `0x2b7f32C4C05Ab1ebB3E6a5E268e343b35CDA19Db` | Test token |
+| `_safe` | `0x1eaf444ebDf6495C57aD52A04C61521bBf564ace` | Gnosis Safe (legacy fee holder) |
+| `clankerFactory` (hardcoded constant) | `0x10F4485d6f90239B72c6A5eaD2F2320993D285E4` | Clanker v3.1 factory — never changes |
 
-The following must come from the client (via escalation response) before deployment:
-
-| Field | Status | Notes |
-|-------|--------|-------|
-| `_owner` (hardware wallet address) | **NEEDED** | Constructor arg — retains full control of the proxy |
-| `_operator` (hot wallet address) | **NEEDED** | Constructor arg — can call `claimLegacyAndBurn()` and `recoverCreator()` |
-
-All other addresses are known and hardcoded as immutables in the contract.
+**No more TBDs — all addresses confirmed.**
 
 ---
 
@@ -46,60 +44,70 @@ All other addresses are known and hardcoded as immutables in the contract.
 **Location:** `packages/foundry/contracts/LegacyFeeBurner.sol`
 
 ### Purpose
-Acts as the registered Clanker creator for ₸USD. Enables:
-1. Hot wallet calls `claimLegacyAndBurn()` → single tx: transfer creator to Safe → call `BurnEngine.executeFullCycle()`
-2. Dead man's switch: anyone can call `claimLegacyAndBurn()` after 7 days of inactivity
+Acts as the registered Clanker creator for the token. Enables:
+1. **Anyone** can call `claimLegacyAndBurn()` at any time → single tx: transfer creator to Safe → call `BurnEngine.executeFullCycle()`
+2. Operator can call `recoverCreator()` → returns creator to owner
 3. Hardware wallet (owner) retains full recovery and transfer rights
 
 ### Key Design Decisions
-- **No arbitrary calls** — only hardcoded interactions with clankerFactory and BurnEngine V2
+- **`claimLegacyAndBurn()` is fully permissionless** — no time lock, no operator restriction, callable by anyone
+- **No arbitrary calls** — only hardcoded interactions with clankerFactory and BurnEngine
 - **No upgradability, no pause, no admin token withdrawal**
 - **No fallback/receive** — cannot accept ETH or arbitrary calls
 - **Ownable2Step** for safe ownership transfers
 - **ReentrancyGuard** on `claimLegacyAndBurn()` (two external calls in sequence)
-- Dead man's switch is safe: destination (BurnEngine V2) is immutable, cannot be redirected
+- Constructor args: `_owner`, `_operator`, `_burnEngine`, `_token`, `_safe` — all set as immutables
 
 ### State Variables
 
 ```solidity
 // Immutables (set at construction, never changeable)
-address public immutable clankerFactory;  // 0x10F4485d6f90239B72c6A5eaD2F2320993D285E4
-address public immutable burnEngine;      // 0xb9Ca0A8c39A06892a205d173F95424D5AccC141f
-address public immutable safe;            // 0x1eaf444ebDf6495C57aD52A04C61521bBf564ace
-address public immutable token;           // 0x3d5e487B21E0569048c4D1A60E98C36e1B09DB07
+address public immutable clankerFactory;  // hardcoded: 0x10F4485d6f90239B72c6A5eaD2F2320993D285E4
+address public immutable burnEngine;      // from constructor: _burnEngine
+address public immutable safe;            // from constructor: _safe
+address public immutable token;           // from constructor: _token
 
 // Mutable
 address public owner;           // hardware wallet — set via Ownable2Step
 address public pendingOwner;    // for 2-step ownership transfer
-address public operator;        // hot wallet — can claim+burn and recover creator
-uint256 public lastClaimTimestamp;  // tracks last claim for dead man's switch
-uint256 public constant CLAIM_INTERVAL = 7 days;  // 604800 seconds
+address public operator;        // hot wallet — can call recoverCreator()
+// NOTE: No lastClaimTimestamp, no CLAIM_INTERVAL — claiming is fully permissionless
+```
+
+### Constructor
+
+```solidity
+constructor(
+    address _owner,        // 0xa2aD5F70B2EaccA81910561B3c1c7FfEC2B2C2B3
+    address _operator,     // 0xeB99a27AD482534FBf40213d6714e130A43Db0d8
+    address _burnEngine,   // 0x1f068DB935DD585941eC386eB14ca595F350D63e
+    address _token,        // 0x2b7f32C4C05Ab1ebB3E6a5E268e343b35CDA19Db
+    address _safe          // 0x1eaf444ebDf6495C57aD52A04C61521bBf564ace
+)
 ```
 
 ### Functions
 
 | Function | Access | Description |
 |----------|--------|-------------|
-| `claimLegacyAndBurn()` | Operator: anytime. Anyone: after 7 days since last claim | `clankerFactory.tokenCreatorTransfer(safe, token, burnEngine)` → `burnEngine.executeFullCycle()`. Updates `lastClaimTimestamp`. |
-| `recoverCreator()` | Operator only | `clankerFactory.updateTokenCreator(token, owner)` — always points back to owner |
+| `claimLegacyAndBurn()` | **Anyone, anytime** (fully permissionless) | `clankerFactory.tokenCreatorTransfer(safe, token, burnEngine)` → `burnEngine.executeFullCycle()` |
+| `recoverCreator()` | Operator or owner | `clankerFactory.updateTokenCreator(token, owner)` — always points back to current owner |
 | `transferCreator(address newCreator)` | Owner only | `clankerFactory.updateTokenCreator(token, newCreator)` — arbitrary new creator |
 | `setOperator(address newOperator)` | Owner only | Update authorized operator address |
 | `transferOwnership(address newOwner)` | Owner only | Sets `pendingOwner` — Step 1 of 2-step transfer |
 | `acceptOwnership()` | Pending owner only | Confirms ownership — Step 2 of 2-step transfer |
 
-### Access Control Logic for `claimLegacyAndBurn()`
+### Access Control for `claimLegacyAndBurn()`
 ```solidity
-if (msg.sender != operator) {
-    require(block.timestamp >= lastClaimTimestamp + CLAIM_INTERVAL, "Too early");
+// Fully permissionless — no msg.sender check, no time check
+function claimLegacyAndBurn() external nonReentrant {
+    // 1. clankerFactory.tokenCreatorTransfer(safe, token, burnEngine)
+    // 2. burnEngine.executeFullCycle()
 }
-// Execute:
-// 1. clankerFactory.tokenCreatorTransfer(safe, token, burnEngine)
-// 2. burnEngine.executeFullCycle()
-// 3. lastClaimTimestamp = block.timestamp
 ```
 
 ### Events
-- `LegacyFeesClaimed(address indexed token, address indexed burnEngine, uint256 timestamp)`
+- `LegacyFeesClaimed(address indexed caller, address indexed token, address indexed burnEngine, uint256 timestamp)`
 - `FullCycleTriggered(address indexed burnEngine)`
 - `CreatorTransferred(address indexed token, address indexed newCreator)`
 - `CreatorRecovered(address indexed token, address indexed owner)`
@@ -107,7 +115,7 @@ if (msg.sender != operator) {
 - `OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner)`
 - `OwnershipTransferred(address indexed previousOwner, address indexed newOwner)`
 
-### Clanker Factory Interface (critical)
+### Clanker Factory Interface
 ```solidity
 interface IClankerFactory {
     // Used in claimLegacyAndBurn()
@@ -124,25 +132,25 @@ interface IClankerFactory {
 ## Foundry Tests
 
 **Location:** `packages/foundry/test/LegacyFeeBurner.t.sol`
-**Fork:** Base mainnet fork — tests against REAL Clanker factory and BurnEngine V2 state
+**Fork:** Base mainnet fork — tests against REAL Clanker factory state
 
 ### Required Test Coverage (≥90%)
 
 1. **Deployment** — constructor sets all immutables correctly
-2. **Access control — claimLegacyAndBurn()**
-   - Operator can call at any time
-   - Non-operator fails before 7 days (reverts)
-   - Non-operator succeeds after 7 days
-   - Updates `lastClaimTimestamp` on success
-3. **Access control — recoverCreator()**
+2. **claimLegacyAndBurn() — fully permissionless**
+   - Anyone can call (random address, not operator, not owner) ✓
+   - Operator can call ✓
+   - Owner can call ✓
+   - No time restriction ✓
+3. **recoverCreator()**
    - Operator can call
    - Owner can call
    - Random address reverts
-4. **Access control — transferCreator()**
+4. **transferCreator()**
    - Owner can call
    - Operator cannot call
    - Random address reverts
-5. **Access control — setOperator()**
+5. **setOperator()**
    - Owner can update operator
    - Non-owner reverts
 6. **Ownable2Step**
@@ -151,16 +159,13 @@ interface IClankerFactory {
    - Wrong address cannot `acceptOwnership`
 7. **Function selector verification**
    - `tokenCreatorTransfer` selector matches `0xcb349ff9`
-   - Call encoding verified against live factory state on fork
-8. **Dead man's switch edge cases**
-   - Exactly at 7 days (block.timestamp = lastClaim + 7 days): should succeed
-   - 1 second before 7 days: should revert
-9. **Reentrancy guard** — `claimLegacyAndBurn()` cannot be called recursively
+   - Encoding verified against live factory on fork
+8. **Reentrancy guard** — cannot be called recursively
 
-### Pre-Deploy Dry Run Test (Critical)
-Per the security notes in the build plan: before ever transferring creator to the proxy, verify the round-trip:
-1. Call `claimLegacyAndBurn()` BEFORE creator is transferred → should revert (proxy not authorized as creator)
-2. This confirms the revert path works and the proxy contract is safe to register
+### Pre-Deploy Dry Run Test (Critical — from build plan)
+Before transferring creator to proxy:
+1. Call `claimLegacyAndBurn()` BEFORE creator is transferred → should revert (proxy not authorized)
+2. Confirms revert path works and proxy is safe to register
 
 ---
 
@@ -168,11 +173,14 @@ Per the security notes in the build plan: before ever transferring creator to th
 
 **Location:** `packages/foundry/script/DeployLegacyFeeBurner.s.sol`
 
-```solidity
-// Constructor args — set via env vars or deploy config, NEVER hardcoded
-address owner = vm.envAddress("LEGACY_OWNER");    // TBD: hardware wallet
-address operator = vm.envAddress("LEGACY_OPERATOR"); // TBD: hot wallet
-// All other addresses are immutable constants in the contract
+Uses env vars for constructor args (never hardcoded):
+```bash
+LEGACY_OWNER=0xa2aD5F70B2EaccA81910561B3c1c7FfEC2B2C2B3 \
+LEGACY_OPERATOR=0xeB99a27AD482534FBf40213d6714e130A43Db0d8 \
+LEGACY_BURN_ENGINE=0x1f068DB935DD585941eC386eB14ca595F350D63e \
+LEGACY_TOKEN=0x2b7f32C4C05Ab1ebB3E6a5E268e343b35CDA19Db \
+LEGACY_SAFE=0x1eaf444ebDf6495C57aD52A04C61521bBf564ace \
+forge script DeployLegacyFeeBurner --rpc-url base --broadcast
 ```
 
 **Target:** Base mainnet (chain ID 8453)
@@ -188,45 +196,44 @@ address operator = vm.envAddress("LEGACY_OPERATOR"); // TBD: hot wallet
 
 ### External Contracts (in `externalContracts.ts`)
 - `LegacyFeeBurner` — deployed address (available after `deploy_contract` stage)
-- `BurnEngineV2` at `0xb9Ca0A8c39A06892a205d173F95424D5AccC141f`
+- `BurnEngine` at `0x1f068DB935DD585941eC386eB14ca595F350D63e`
 
 ### Three Views (single page, conditional on connected wallet)
 
 #### Public View (no wallet OR unrecognized wallet)
-- Display: `lastClaimTimestamp`, time elapsed, time until permissionless claim opens (7-day countdown)
-- Display: `operator`, `owner` addresses using `<Address/>` component
-- If 7+ days since last claim: show "Claim & Burn All" button (permissionless) with loader/disabled state
-- If under 7 days: show countdown timer + "Claim available [date/time]"
-- Correct network banner if on wrong chain
+- **"Claim & Burn All" button** — since permissionless, anyone can call this
+  - Shows button always (no countdown, no restriction)
+  - Loader/disabled state during tx (per frontend-ux Rule 1)
+  - Transaction status: pending → "Claiming legacy fees..." → "Triggering BurnEngine..." → ✅ BaseScan link
+- Display: `operator` and `owner` addresses via `<Address/>`
+- Network banner if on wrong chain
 
-#### Operator View (hot wallet connected)
-- Primary button: **"Claim & Burn All"** → calls `claimLegacyAndBurn()`
-  - Transaction status flow: pending → "Claiming legacy fees..." → "Triggering BurnEngine..." → ✅ Done → BaseScan link
-  - Separate loading state per Rule 1 (frontend-ux)
-- Secondary button: **"Emergency: Recover Creator to Owner"** → calls `recoverCreator()`
-  - Confirm dialog before executing (irreversible action)
-- Display: operator address, owner address, `lastClaimTimestamp`, time until permissionless window
+#### Operator View (operator wallet connected)
+- Same "Claim & Burn All" button as public view
+- Additional: **"Emergency: Recover Creator to Owner"** → calls `recoverCreator()`
+  - Confirm dialog before executing
+- Status display: operator address, owner address
 
-#### Owner View (hardware wallet connected)
+#### Owner View (owner wallet connected)
+- Same as Operator view PLUS:
 - **"Transfer Creator"** → `<AddressInput/>` → calls `transferCreator(address)`
-  - Warning: "This transfers creator rights to an external address. Use Recover Creator to get back."
+  - Warning: "This transfers creator rights externally."
 - **"Set New Operator"** → `<AddressInput/>` → calls `setOperator(address)`
 - **"Transfer Ownership (Step 1)"** → `<AddressInput/>` → calls `transferOwnership(address)`
-  - Show `pendingOwner` if set, with "Accept Ownership" button
-- Display: same status info as public view
+  - Show pending owner if set, with "Accept Ownership" button
 
 #### Wrong Network
-- Prompt to switch to Base (chain ID 8453) — per four-state flow in frontend-ux
+- "Switch to Base" button — per four-state flow (frontend-ux Rule 2)
 
 ### UX Rules (from ethskills frontend-ux)
-- Every onchain button: separate loading state, disabled during tx, show spinner
-- Never show Approve+Action simultaneously
-- All addresses: `<Address/>` for display, `<AddressInput/>` for input
-- No duplicate h1 title
-- DaisyUI semantic colors — no hardcoded dark backgrounds
-- Fix pill-shaped inputs: `--radius-field: 0.5rem` in both theme blocks
-- Error translation: parse contract custom errors to human-readable text
-- No public RPCs in production: use Alchemy via env var
+- Every onchain button: separate loading state, disabled during tx, show spinner (Rule 1)
+- Never show Approve+Action simultaneously — no ERC20 approval needed here (Rule 2)
+- All addresses: `<Address/>` for display, `<AddressInput/>` for input (Rule 3)
+- No duplicate h1 title (Rule 5)
+- DaisyUI semantic colors — no hardcoded dark backgrounds (Rule 7)
+- Fix pill-shaped inputs: `--radius-field: 0.5rem` in both theme blocks (Rule 8)
+- Contract error translation: parse custom errors to human-readable text (Rule 9)
+- No public RPCs in production: use Alchemy via env var (Rule 6)
 
 ### scaffold.config.ts
 ```typescript
@@ -245,29 +252,31 @@ burnerWalletMode: "localNetworksOnly",
 ### Phase 1: Local (Base Fork)
 - Run: `yarn fork --network base` + `yarn deploy` + `yarn start`
 - Set `targetNetworks: [chains.foundry]` during development
-- Test all three views against fork with real Clanker/BurnEngine state
-- Use `cast rpc anvil_setIntervalMining 1` for timestamp-dependent logic (7-day switch)
+- Use `cast rpc anvil_setIntervalMining 1` for consistent block production
+- Test all three views against fork with real Clanker state
 
 ### Phase 2: Live Contracts + Local UI
-- Deploy `LegacyFeeBurner.sol` to Base mainnet with real `_owner` and `_operator` addresses
+- Deploy `LegacyFeeBurner.sol` to Base mainnet
 - Set `targetNetworks: [chains.base]`
-- Run test suite against live contract
-- **DO NOT transfer creator to proxy until round-trip test passes**
+- **DO NOT transfer creator to proxy until round-trip test passes:**
+  1. Call `claimLegacyAndBurn()` before creator transfer → verify it reverts (not authorized)
+  2. Transfer creator to proxy
+  3. Call `recoverCreator()` immediately → verify creator returns to owner on Basescan
+  4. Only then proceed to claim
 
 ### Phase 3: Production Deploy
-- Build IPFS export or Vercel deploy
+- IPFS build or Vercel deploy per client's Vercel deployment guide in the build plan
 - Set OG image, correct metadata, remove SE2 branding
-- Verify all routes work
+- Env vars: `NEXT_PUBLIC_LEGACY_FEE_BURNER_ADDRESS`, `NEXT_PUBLIC_BURN_ENGINE_ADDRESS`, `NEXT_PUBLIC_BASE_RPC`
 
 ---
 
-## Security Notes (from build plan)
+## Security Notes
 
-- **Trapped creator risk:** Before claiming any fees, verify round-trip: transfer creator to proxy → immediately call `recoverCreator()` from operator → verify creator returns to owner on BaseScan. This costs just gas, no risk to fees.
-- **Hot wallet compromise:** Attacker can only call `claimLegacyAndBurn()` (burns to BurnEngine — desired) or `recoverCreator()` (returns to owner — safe). Zero damage possible.
+- **Permissionless calling is safe** — BurnEngine address is immutable, destination cannot be redirected. Worst case: someone calls it too often (minor gas waste, always produces the desired burn outcome).
+- **Hot wallet compromise:** Attacker can call `recoverCreator()` (returns to owner — safe) or `transferCreator()` — wait, no, operator cannot call `transferCreator()`. Operator can only do `recoverCreator()`. Zero damage possible from operator compromise.
 - **Owner compromise:** Attacker could call `transferCreator()` to redirect creator. Mitigated by hardware wallet.
-- **Dead man's switch:** After 7 days anyone can trigger — safe because BurnEngine V2 address is immutable.
-- **No token custody:** ₸USD goes directly from Safe → BurnEngine via `tokenCreatorTransfer`. Proxy never holds tokens.
+- **No token custody:** Token goes directly from Safe → BurnEngine via `tokenCreatorTransfer`. Proxy never holds tokens.
 - **Reentrancy:** ReentrancyGuard on `claimLegacyAndBurn()` — two sequential external calls.
 
 ---
@@ -280,12 +289,13 @@ burnerWalletMode: "localNetworksOnly",
 - [ ] `prototype` — contract + tests + frontend
 - [ ] `contract_audit` — ethskills.com/audit/SKILL.md line-by-line
 - [ ] `contract_fix` — fix audit findings
-- [ ] `deep_contract_audit` — evaluate if needed (contract is ~100 lines, relatively simple, but has external calls — evaluate at audit time)
+- [ ] `deep_contract_audit` — ~100 lines, simple access control, no swaps — likely skip
+- [ ] `deep_contract_fix`
 - [ ] `frontend_audit` — ethskills.com/qa/SKILL.md + frontend-ux + frontend-playbook
 - [ ] `frontend_fix`
 - [ ] `full_audit`
 - [ ] `full_audit_fix`
-- [ ] `deploy_contract` — **BLOCKED on `_owner` and `_operator` addresses from client**
+- [ ] `deploy_contract` — deploy with addresses above
 - [ ] `livecontract_fix`
 - [ ] `deploy_app`
 - [ ] `liveapp_fix`
@@ -295,8 +305,9 @@ burnerWalletMode: "localNetworksOnly",
 
 ---
 
-## Notes
+## Notes for Builder
 
-- **Worker wallet blocker:** On-chain `acceptJob(7)` and `logWork()` require a registered worker wallet. Austin is provisioning this — build proceeds in parallel.
-- **BurnEngine V2 ABI:** Use `getStatus()`, `executeFullCycle()` from `burnengine-v2` repo for `externalContracts.ts`.
-- **Fork testing selector:** `tokenCreatorTransfer` selector `0xcb349ff9` must be verified against live factory via Base mainnet fork test.
+- **Worker wallet blocker:** On-chain `acceptJob(7)` and `logWork()` require a registered worker wallet. Austin is provisioning — build proceeds in parallel.
+- **BurnEngine ABI for externalContracts.ts:** Check `burnengine-v2` repo (`clawdbotatg/burnengine-v2`) for the BurnEngineV2 ABI. Use `executeFullCycle()` signature.
+- **Clanker factory ABI verification:** Fork test MUST verify `tokenCreatorTransfer` selector is `0xcb349ff9` against live Base mainnet state.
+- **No CLAIM_INTERVAL anywhere** — do not implement the 7-day dead man's switch at all. Fully permissionless from day one.
