@@ -1,18 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { Address } from "@scaffold-ui/components";
 import { base } from "viem/chains";
 import { useAccount, useSwitchChain } from "wagmi";
 import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useDeployedContractInfo } from "~~/hooks/scaffold-eth";
 import { notification } from "~~/utils/scaffold-eth";
 
 const OWNER_FALLBACK = "0xa2aD5F70B2EaccA81910561B3c1c7FfEC2B2C2B3";
 const OPERATOR_FALLBACK = "0xeB99a27AD482534FBf40213d6714e130A43Db0d8";
-
-function shortenAddress(addr: string) {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
 
 function translateError(e: any): string {
   const msg = e?.message || e?.shortMessage || "Transaction failed";
@@ -24,6 +22,7 @@ function translateError(e: any): string {
 }
 
 export default function Home() {
+  const { data: contractInfo } = useDeployedContractInfo({ contractName: "LegacyFeeBurner" });
   const { address, chain } = useAccount();
   const { switchChain } = useSwitchChain();
 
@@ -151,31 +150,37 @@ export default function Home() {
 
         {/* Contract Info */}
         <div className="card bg-base-100 shadow-md mt-6 p-4">
-          <div className="text-sm space-y-1">
-            <div>
-              <span className="font-semibold">Owner:</span>{" "}
-              <span className="font-mono text-xs">{shortenAddress(currentOwner)}</span>
+          <div className="text-sm space-y-2">
+            {contractInfo?.address && (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Contract:</span>
+                <Address address={contractInfo.address} />
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">Owner:</span>
+              <Address address={currentOwner as `0x${string}`} />
             </div>
-            <div>
-              <span className="font-semibold">Operator:</span>{" "}
-              <span className="font-mono text-xs">{shortenAddress(currentOperator)}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">Operator:</span>
+              <Address address={currentOperator as `0x${string}`} />
             </div>
             {liveToken && (
-              <div>
-                <span className="font-semibold">Token:</span>{" "}
-                <span className="font-mono text-xs">{shortenAddress(liveToken as string)}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Token:</span>
+                <Address address={liveToken as `0x${string}`} />
               </div>
             )}
             {liveSafe && (
-              <div>
-                <span className="font-semibold">Safe:</span>{" "}
-                <span className="font-mono text-xs">{shortenAddress(liveSafe as string)}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Safe:</span>
+                <Address address={liveSafe as `0x${string}`} />
               </div>
             )}
             {liveBurnEngine && (
-              <div>
-                <span className="font-semibold">BurnEngine:</span>{" "}
-                <span className="font-mono text-xs">{shortenAddress(liveBurnEngine as string)}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">BurnEngine:</span>
+                <Address address={liveBurnEngine as `0x${string}`} />
               </div>
             )}
           </div>
