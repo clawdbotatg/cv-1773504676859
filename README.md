@@ -30,7 +30,7 @@ A permissionless proxy contract on Base that acts as the registered Clanker v3.1
 
 ## Frontend
 
-Deployed to BGIPFS: https://bafybeiecnghekf4ol3rp5yxmpahsstnh7dximaufiyhiwyvi5xuk372bzy.ipfs.dweb.link
+Deployed to BGIPFS: https://community.bgipfs.com/ipfs/bafybeiakecdcrjoroi6jyj7erantcrxqsdqcwivhcootkltwvkyuh534q4
 
 Three views based on connected wallet:
 - **Public** — Claim & Burn All button
