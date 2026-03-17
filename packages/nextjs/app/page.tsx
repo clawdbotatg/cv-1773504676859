@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Address, AddressInput } from "@scaffold-ui/components";
 import { base } from "viem/chains";
 import { useAccount, useSwitchChain } from "wagmi";
@@ -23,7 +23,7 @@ function translateError(e: any): string {
 
 export default function Home() {
   const { data: contractInfo } = useDeployedContractInfo({ contractName: "LegacyFeeBurner" });
-  const { address, chain } = useAccount();
+  const { address, chain, connector } = useAccount();
   const { switchChain } = useSwitchChain();
 
   // Read live owner/operator from contract
@@ -42,6 +42,45 @@ export default function Home() {
   const isOwner = address?.toLowerCase() === currentOwner.toLowerCase();
   const isOperator = address?.toLowerCase() === currentOperator.toLowerCase();
   const isOnBase = chain?.id === base.id;
+
+  // Mobile deep linking — fire TX first, then open wallet app after relay delay
+  const openWallet = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (!isMobile || window.ethereum) return; // skip desktop or in-app browser
+    const allIds = [connector?.id, connector?.name, localStorage.getItem("wagmi.recentConnectorId")]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    let wcWallet = "";
+    try {
+      const wcKey = Object.keys(localStorage).find(k => k.startsWith("wc@2:client"));
+      if (wcKey) wcWallet = (localStorage.getItem(wcKey) || "").toLowerCase();
+    } catch {}
+    const search = `${allIds} ${wcWallet}`;
+    const schemes: [string[], string][] = [
+      [["rainbow"], "rainbow://"],
+      [["metamask"], "metamask://"],
+      [["coinbase", "cbwallet"], "cbwallet://"],
+      [["trust"], "trust://"],
+      [["phantom"], "phantom://"],
+    ];
+    for (const [keywords, scheme] of schemes) {
+      if (keywords.some(k => search.includes(k))) {
+        window.location.href = scheme;
+        return;
+      }
+    }
+  }, [connector]);
+
+  const writeAndOpen = useCallback(
+    <T,>(writeFn: () => Promise<T>): Promise<T> => {
+      const promise = writeFn();
+      setTimeout(openWallet, 2000);
+      return promise;
+    },
+    [openWallet],
+  );
 
   // Separate write hooks
   const { writeContractAsync: claimAndBurn } = useScaffoldWriteContract("LegacyFeeBurner");
@@ -67,7 +106,7 @@ export default function Home() {
   const handleClaim = async () => {
     setIsClaiming(true);
     try {
-      await claimAndBurn({ functionName: "claimLegacyAndBurn" });
+      await writeAndOpen(() => claimAndBurn({ functionName: "claimLegacyAndBurn" }));
       notification.success("Legacy fees claimed and burned!");
     } catch (e: any) {
       notification.error(translateError(e));
@@ -79,7 +118,7 @@ export default function Home() {
   const handleRecover = async () => {
     setIsRecovering(true);
     try {
-      await recoverCreatorWrite({ functionName: "recoverCreator" });
+      await writeAndOpen(() => recoverCreatorWrite({ functionName: "recoverCreator" }));
       notification.success("Creator recovered to owner!");
     } catch (e: any) {
       notification.error(translateError(e));
@@ -92,7 +131,7 @@ export default function Home() {
     if (!newCreatorAddr) return;
     setIsTransferringCreator(true);
     try {
-      await transferCreatorWrite({ functionName: "transferCreator", args: [newCreatorAddr as `0x${string}`] });
+      await writeAndOpen(() => transferCreatorWrite({ functionName: "transferCreator", args: [newCreatorAddr as `0x${string}`] }));
       notification.success("Creator transferred!");
       setNewCreatorAddr("");
     } catch (e: any) {
@@ -106,7 +145,7 @@ export default function Home() {
     if (!newOperatorAddr) return;
     setIsSettingOperator(true);
     try {
-      await setOperatorWrite({ functionName: "setOperator", args: [newOperatorAddr as `0x${string}`] });
+      await writeAndOpen(() => setOperatorWrite({ functionName: "setOperator", args: [newOperatorAddr as `0x${string}`] }));
       notification.success("Operator updated!");
       setNewOperatorAddr("");
     } catch (e: any) {
@@ -120,7 +159,7 @@ export default function Home() {
     if (!newOwnerAddr) return;
     setIsTransferringOwnership(true);
     try {
-      await transferOwnershipWrite({ functionName: "transferOwnership", args: [newOwnerAddr as `0x${string}`] });
+      await writeAndOpen(() => transferOwnershipWrite({ functionName: "transferOwnership", args: [newOwnerAddr as `0x${string}`] }));
       notification.success("Ownership transfer started! New owner must call Accept.");
       setNewOwnerAddr("");
     } catch (e: any) {
@@ -133,7 +172,7 @@ export default function Home() {
   const handleAcceptOwnership = async () => {
     setIsAcceptingOwnership(true);
     try {
-      await acceptOwnershipWrite({ functionName: "acceptOwnership" });
+      await writeAndOpen(() => acceptOwnershipWrite({ functionName: "acceptOwnership" }));
       notification.success("Ownership accepted!");
     } catch (e: any) {
       notification.error(translateError(e));
@@ -196,10 +235,11 @@ export default function Home() {
             </button>
           ) : (
             <button
-              className={`btn btn-primary btn-lg w-full ${isClaiming ? "loading" : ""}`}
+              className="btn btn-primary btn-lg w-full"
               onClick={handleClaim}
               disabled={isClaiming}
             >
+              {isClaiming && <span className="loading loading-spinner loading-sm mr-2" />}
               {isClaiming ? "Claiming & Burning…" : "🔥 Claim & Burn All"}
             </button>
           )}
@@ -213,10 +253,11 @@ export default function Home() {
               Controls
             </h2>
             <button
-              className={`btn btn-warning w-full ${isRecovering ? "loading" : ""}`}
+              className="btn btn-warning w-full"
               onClick={handleRecover}
               disabled={isRecovering}
             >
+              {isRecovering && <span className="loading loading-spinner loading-sm mr-2" />}
               {isRecovering ? "Recovering…" : "⚠️ Recover Creator to Owner"}
             </button>
           </div>
@@ -233,10 +274,11 @@ export default function Home() {
               <div className="flex gap-2">
                 <AddressInput placeholder="0x… or ENS name" value={newCreatorAddr} onChange={setNewCreatorAddr} />
                 <button
-                  className={`btn btn-error ${isTransferringCreator ? "loading" : ""}`}
+                  className="btn btn-error"
                   onClick={handleTransferCreator}
                   disabled={isTransferringCreator || !newCreatorAddr}
                 >
+                  {isTransferringCreator && <span className="loading loading-spinner loading-sm mr-1" />}
                   Transfer
                 </button>
               </div>
@@ -248,10 +290,11 @@ export default function Home() {
               <div className="flex gap-2">
                 <AddressInput placeholder="0x… or ENS name" value={newOperatorAddr} onChange={setNewOperatorAddr} />
                 <button
-                  className={`btn btn-secondary ${isSettingOperator ? "loading" : ""}`}
+                  className="btn btn-secondary"
                   onClick={handleSetOperator}
                   disabled={isSettingOperator || !newOperatorAddr}
                 >
+                  {isSettingOperator && <span className="loading loading-spinner loading-sm mr-1" />}
                   Set
                 </button>
               </div>
@@ -263,10 +306,11 @@ export default function Home() {
               <div className="flex gap-2">
                 <AddressInput placeholder="0x… or ENS name" value={newOwnerAddr} onChange={setNewOwnerAddr} />
                 <button
-                  className={`btn btn-error ${isTransferringOwnership ? "loading" : ""}`}
+                  className="btn btn-error"
                   onClick={handleTransferOwnership}
                   disabled={isTransferringOwnership || !newOwnerAddr}
                 >
+                  {isTransferringOwnership && <span className="loading loading-spinner loading-sm mr-1" />}
                   Start Transfer
                 </button>
               </div>
@@ -274,10 +318,11 @@ export default function Home() {
 
             {/* Accept Ownership */}
             <button
-              className={`btn btn-outline w-full ${isAcceptingOwnership ? "loading" : ""}`}
+              className="btn btn-outline w-full"
               onClick={handleAcceptOwnership}
               disabled={isAcceptingOwnership}
             >
+              {isAcceptingOwnership && <span className="loading loading-spinner loading-sm mr-2" />}
               {isAcceptingOwnership ? "Accepting…" : "Accept Ownership"}
             </button>
           </div>
