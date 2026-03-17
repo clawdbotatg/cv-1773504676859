@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   8453: {
     LegacyFeeBurner: {
-      address: "0xF2D3E6Ce8f950bb144A18DfB784e29Ea7cA96e24",
+      address: "0x2c857a891338fe17d86651b7b78c59c96e274246",
       deployedOnBlock: 43516419,
       abi: [
         {

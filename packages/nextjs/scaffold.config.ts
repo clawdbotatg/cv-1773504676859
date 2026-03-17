@@ -23,7 +23,7 @@ const scaffoldConfig = {
   // The key is the chain ID, and the value is the HTTP RPC URL
   // Override Base RPC — avoids using the SE2 shared Alchemy key
   rpcOverrides: {
-    [chains.base.id]: process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org",
+    [chains.base.id]: process.env.NEXT_PUBLIC_BASE_RPC || "https://base-mainnet.g.alchemy.com/v2/8GVG8WjDs-sGFRr6Rm839",
   },
   // This is ours WalletConnect's default project ID.
   // You can get your own at https://cloud.walletconnect.com
