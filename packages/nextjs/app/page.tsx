@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Address } from "@scaffold-ui/components";
+import { Address, AddressInput } from "@scaffold-ui/components";
 import { base } from "viem/chains";
 import { useAccount, useSwitchChain } from "wagmi";
 import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
@@ -231,13 +231,7 @@ export default function Home() {
             <div>
               <label className="label text-sm font-semibold">Transfer Creator</label>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="input input-bordered flex-1 font-mono text-xs"
-                  placeholder="0x… new creator address"
-                  value={newCreatorAddr}
-                  onChange={e => setNewCreatorAddr(e.target.value)}
-                />
+                <AddressInput placeholder="0x… or ENS name" value={newCreatorAddr} onChange={setNewCreatorAddr} />
                 <button
                   className={`btn btn-error ${isTransferringCreator ? "loading" : ""}`}
                   onClick={handleTransferCreator}
@@ -252,13 +246,7 @@ export default function Home() {
             <div>
               <label className="label text-sm font-semibold">Set Operator</label>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="input input-bordered flex-1 font-mono text-xs"
-                  placeholder="0x… new operator address"
-                  value={newOperatorAddr}
-                  onChange={e => setNewOperatorAddr(e.target.value)}
-                />
+                <AddressInput placeholder="0x… or ENS name" value={newOperatorAddr} onChange={setNewOperatorAddr} />
                 <button
                   className={`btn btn-secondary ${isSettingOperator ? "loading" : ""}`}
                   onClick={handleSetOperator}
@@ -273,13 +261,7 @@ export default function Home() {
             <div>
               <label className="label text-sm font-semibold">Transfer Ownership (2-step)</label>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="input input-bordered flex-1 font-mono text-xs"
-                  placeholder="0x… new owner address"
-                  value={newOwnerAddr}
-                  onChange={e => setNewOwnerAddr(e.target.value)}
-                />
+                <AddressInput placeholder="0x… or ENS name" value={newOwnerAddr} onChange={setNewOwnerAddr} />
                 <button
                   className={`btn btn-error ${isTransferringOwnership ? "loading" : ""}`}
                   onClick={handleTransferOwnership}
